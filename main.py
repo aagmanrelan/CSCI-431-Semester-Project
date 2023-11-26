@@ -47,6 +47,12 @@ def plane_segmentation(pointCloud, dist_threshold, n_points, interactions):
     return plane_model, inliers
 
 
+def get_box_volume(box):
+    a = box.extent
+    a = a * 2
+    print(np.prod(a))
+
+
 def main():
     filelist = []
     for file in os.listdir('dataset/PointClouds'):
@@ -69,16 +75,78 @@ def main():
     cluster_info_list = []
 
     for obj in objectpointcloudlist:
-        labels = np.array(obj.cluster_dbscan(eps=1.75, min_points=6))
+        labels = np.array(obj.cluster_dbscan(eps=1.20, min_points=6))
         cluster_points_dict = {label: [] for label in np.unique(labels)}
         for point, label in zip(np.asarray(obj.points), labels):
             cluster_points_dict[label].append(point)
         cluster_info_list.append(cluster_points_dict)
 
+    working_dict = cluster_info_list[399]
+
+    for key in working_dict:
+        points = working_dict[key]
+        if 500 > len(points) > 8:
+            vector_p = o3d.utility.Vector3dVector(points)
+            box = o3d.geometry.OrientedBoundingBox.create_from_points(vector_p)
+            get_box_volume(box)
+            point_cloud = o3d.geometry.PointCloud()
+            point_cloud.points = vector_p
+            visualize_pointCloud([point_cloud])
+
+
+
+
+###########################################################
+###########################################################
+###########################################################
+###########################################################
+###########################################################
+###########################################################
 
     # get corners of these boxes
     # Get volume
     # Compare by Volume
+
+
+
+    # visualize_pointCloud([objectpointcloudlist[0]])
+
+    # pcd = objectpointcloudlist[399]
+    # with o3d.utility.VerbosityContextManager(
+    #         o3d.utility.VerbosityLevel.Debug) as cm:
+    #     labels = np.array(
+    #         pcd.cluster_dbscan(eps=1.20, min_points=6, print_progress=True))
+    #
+    # max_label = labels.max()
+    # print(f"point cloud has {max_label + 1} clusters")
+    # colors = plt.get_cmap("tab20")(labels / (max_label if max_label > 0 else 1))
+    # colors[labels < 0] = 0
+    # pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+    # o3d.visualization.draw_geometries([pcd],
+    #                                   zoom=0.455,
+    #                                   front=[-0.4999, -0.1659, -0.8499],
+    #                                   lookat=[2.1813, 2.0619, 2.0999],
+    #                                   up=[0.1204, -0.9852, 0.1215])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     # for key in cluster_info_list[350].keys():
