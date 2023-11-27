@@ -53,6 +53,22 @@ def get_box_volume(box):
     print(np.prod(a))
 
 
+def point_cloud_of_difference(previous, current):
+    distances = current.compute_point_cloud_distance(previous)
+    distances = np.asarray(distances)
+    indices_with_no_movement = np.where(distances < 0.0001)[0]
+    new_point_cloud = current.select_by_index(indices_with_no_movement, invert=True)
+    return new_point_cloud
+
+
+def make_clusters(pointcloud, cluster_info_list):
+    labels = np.array(pointcloud.cluster_dbscan(eps=1.25, min_points=6))
+    cluster_points_dict = {label: [] for label in np.unique(labels)}
+    for point, label in zip(np.asarray(pointcloud.points), labels):
+        cluster_points_dict[label].append(point)
+    cluster_info_list.append(cluster_points_dict)
+
+
 def main():
     filelist = []
     for file in os.listdir('dataset/PointClouds'):
@@ -72,23 +88,50 @@ def main():
         objects = pointcloud.select_by_index(inliers, invert=True)
         objectpointcloudlist.append(objects)
 
+    cluster_info_list = []
+    make_clusters(objectpointcloudlist[0], cluster_info_list)
+    for i in range(1, 500):
+        current_point_cloud = objectpointcloudlist[i]
+        previous_cloud = objectpointcloudlist[i - 1]
+        differences_point_cloud = point_cloud_of_difference(previous_cloud, current_point_cloud)
+        make_clusters(differences_point_cloud, cluster_info_list)
+
+        working_dist = cluster_info_list[i]
+        previous_dict = cluster_info_list[i - 1]
+
+        for key in working_dist.keys():
+            print(len(working_dist[key]))
+
+        break
+
     # Object point cloud list has all the objects clouds
-    prev= objectpointcloudlist[399]
-    curr = objectpointcloudlist[400]
+    prev= objectpointcloudlist[0]
+    curr = objectpointcloudlist[1]
     dist = curr.compute_point_cloud_distance(prev)
     dist = np.asarray(dist)
     ind = np.where(dist < 0.0001)[0]
+    new_point_cloud = curr.select_by_index(ind, invert=True)
 
-    visualize_pointCloud([curr.select_by_index(ind, invert=True)])
+    pcd = new_point_cloud
+    with o3d.utility.VerbosityContextManager(
+            o3d.utility.VerbosityLevel.Debug) as cm:
+        labels = np.array(
+            pcd.cluster_dbscan(eps=1.25, min_points=6, print_progress=True))
 
+    max_label = labels.max()
+    print(f"point cloud has {max_label + 1} clusters")
+    colors = plt.get_cmap("tab20")(labels / (max_label if max_label > 0 else 1))
+    colors[labels < 0] = 0
+    pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+    o3d.visualization.draw_geometries([pcd],
+                                      zoom=0.455,
+                                      front=[-0.4999, -0.1659, -0.8499],
+                                      lookat=[2.1813, 2.0619, 2.0999],
+                                      up=[0.1204, -0.9852, 0.1215])
 
     # cluster_info_list = []
     # for obj in objectpointcloudlist:
-    #     labels = np.array(obj.cluster_dbscan(eps=1.20, min_points=6))
-    #     cluster_points_dict = {label: [] for label in np.unique(labels)}
-    #     for point, label in zip(np.asarray(obj.points), labels):
-    #         cluster_points_dict[label].append(point)
-    #     cluster_info_list.append(cluster_points_dict)
+
     #
     # working_dict = cluster_info_list[3]
     # for key in working_dict:
@@ -115,23 +158,6 @@ def main():
 
 
 # visualize_pointCloud([objectpointcloudlist[0]])
-
-# pcd = objectpointcloudlist[399]
-# with o3d.utility.VerbosityContextManager(
-#         o3d.utility.VerbosityLevel.Debug) as cm:
-#     labels = np.array(
-#         pcd.cluster_dbscan(eps=1.20, min_points=6, print_progress=True))
-#
-# max_label = labels.max()
-# print(f"point cloud has {max_label + 1} clusters")
-# colors = plt.get_cmap("tab20")(labels / (max_label if max_label > 0 else 1))
-# colors[labels < 0] = 0
-# pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
-# o3d.visualization.draw_geometries([pcd],
-#                                   zoom=0.455,
-#                                   front=[-0.4999, -0.1659, -0.8499],
-#                                   lookat=[2.1813, 2.0619, 2.0999],
-#                                   up=[0.1204, -0.9852, 0.1215])
 
 
 # for key in cluster_info_list[350].keys():
