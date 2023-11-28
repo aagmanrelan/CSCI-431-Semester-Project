@@ -12,15 +12,14 @@ def extract_number_from_filename(filename):
         return int(match.group())
     else:
         return -1
-    
+
 
 def downsample_pointCloud(pointCloud, v_size):
     new_cloud = pointCloud.voxel_down_sample(voxel_size=v_size)
     return new_cloud
 
-    
-def background_subtract(point_cloud_lists):
 
+def background_subtract(point_cloud_lists):
     # visualizer = o3d.visualization.Visualizer()
 
     # visualizer.create_window('PointClouds')
@@ -43,8 +42,6 @@ def background_subtract(point_cloud_lists):
 
         background = np.where(dist < 0.05)[0]
 
-
-        
         if first:
             current_frame = temp.select_by_index(background, invert=True)
             # visualizer.add_geometry(current_frame)
@@ -61,9 +58,9 @@ def background_subtract(point_cloud_lists):
 
     # This ideally should contain only the points belonging to all cars
 
-        # if idx ==499:
-        #     break
-    
+    # if idx ==499:
+    #     break
+
     # pcd = point_cloud_sequence[499]
 
     # with o3d.utility.VerbosityContextManager(
@@ -83,16 +80,17 @@ def background_subtract(point_cloud_lists):
     #                                             up=[0.1204, -0.9852, 0.1215])
     return point_cloud_sequence
 
-def get_vehicle_clusters(point_cloud):
-        # eps =1.25
-        #min_points =6
 
-        labels = np.array(point_cloud.cluster_dbscan(eps=0.9, min_points=4))
-        cluster_points_dict = {label: [] for label in np.unique(labels)}
-        for point, label in zip(np.asarray(point_cloud.points), labels):
-            cluster_points_dict[label].append(point)
-        
-        return cluster_points_dict
+def get_vehicle_clusters(point_cloud):
+    # eps =1.25
+    # min_points =6
+
+    labels = np.array(point_cloud.cluster_dbscan(eps=0.9, min_points=4))
+    cluster_points_dict = {label: [] for label in np.unique(labels)}
+    for point, label in zip(np.asarray(point_cloud.points), labels):
+        cluster_points_dict[label].append(point)
+    return cluster_points_dict
+
 
 def calculate_centroid(point_cloud):
     return np.mean(np.asarray(point_cloud), axis=0)
@@ -106,6 +104,8 @@ vehicle_id : {
     }
 }
 '''
+
+
 def identify_vehicle(current_vehicle, vehicle_tracks, distance_threshold=1.0):
     current_centroid = calculate_centroid(current_vehicle)
 
@@ -118,12 +118,32 @@ def identify_vehicle(current_vehicle, vehicle_tracks, distance_threshold=1.0):
     # If no match found, assign a new ID
     return max(vehicle_tracks.keys(), default=0) + 1
 
+
 def calculate_motion_vector(prev_position, current_position):
     return np.array(current_position) - np.array(prev_position)
 
+
+def write_results_to_file(frame_number, vehicle_track):
+    f = open(f"perception_results/frame_{frame_number}.csv", "w")
+    f.write("vehicle_id,position_x,position_y,position_z,mvec_x,mvec_y,mvec_z,bbox_x_min,bbox_x_max,bbox_y_min,"
+            "bbox_y_max,bbox_z_min,bbox_z_max\n")
+    for key in vehicle_track.keys():
+        data = vehicle_track[key]
+        f.write(str(key)+",")
+        center_x = data['prev_centroid'][0]
+        center_y = data['prev_centroid'][1]
+        center_z = data['prev_centroid'][2]
+        mvx= data['motion_vectors'][0]
+        mvy=data['motion_vectors'][1]
+        mvz = data['motion_vectors'][2]
+        f.write(str(center_x) + "," + str(center_y) + "," + str(center_z)+","+str(mvx)+","+str(mvy)+","+str(mvz))
+        f.write("\n")
+    f.close()
+    pass
+
+
 def process_point_clouds(point_cloud_sequence):
     vehicle_tracks = {}  # Dictionary to keep track of vehicles across frames
-    count = 100
 
     for i, point_cloud in enumerate(point_cloud_sequence):
         # Assume get_vehicle_clusters returns a list of vehicle clusters
@@ -133,27 +153,27 @@ def process_point_clouds(point_cloud_sequence):
         #     for key in vehicle_clusters.keys():
         #         print(str(key), len(vehicle_clusters[key]))
         #     break
-        if i < 101:
-            for cluster, vehicle in vehicle_clusters.items():
-                if cluster != -1:
-                    vehicle_id = identify_vehicle(vehicle, vehicle_tracks)  # Implement this function
-                    centroid = calculate_centroid(vehicle)
 
-                    
-                    if vehicle_id in vehicle_tracks.keys():
-                        prev_centroid = vehicle_tracks[vehicle_id]['prev_centroid']
-                        motion_vector = calculate_motion_vector(prev_centroid, centroid)
-                        vehicle_tracks[vehicle_id]['motion_vectors'].append(motion_vector)
-                    else:
-                        vehicle_tracks[vehicle_id] = {'prev_centroid': centroid, 'motion_vectors': []}
+        for cluster, vehicle in vehicle_clusters.items():
+            if cluster != -1:
+                vehicle_id = identify_vehicle(vehicle, vehicle_tracks)  # Implement this function
+                centroid = calculate_centroid(vehicle)
 
-                    # update prev_centroid for reference 
-                    vehicle_tracks[vehicle_id]['prev_centroid'] = centroid
+                if vehicle_id in vehicle_tracks.keys():
+                    prev_centroid = vehicle_tracks[vehicle_id]['prev_centroid']
+                    motion_vector = calculate_motion_vector(prev_centroid, centroid)
+                    vehicle_tracks[vehicle_id]['motion_vectors'] = motion_vector
+                else:
+                    vehicle_tracks[vehicle_id] = {'prev_centroid': centroid, 'motion_vectors': np.zeros(3)}
+
+                # update prev_centroid for reference
+                vehicle_tracks[vehicle_id]['prev_centroid'] = centroid
+
+                write_results_to_file(i, vehicle_tracks)
         # Optionally, you can remove tracks that haven't been updated in a while
-        print(vehicle_tracks)
+        # print(vehicle_tracks)
 
     return vehicle_tracks
-
 
 
 def main():
@@ -169,16 +189,13 @@ def main():
     for file in filelist:
         pointcloud = o3d.io.read_point_cloud(file)
 
-
         pointcloud = downsample_pointCloud(pointcloud, 0.10)
         point_cloud_lists.append(pointcloud)
         # here we have all the differences of point clouds
-        
+
     point_cloud_list = background_subtract(point_cloud_lists)
 
-    process_point_clouds(point_cloud_list)
-
-
+    tracks = process_point_clouds(point_cloud_list)
 
 
 def extract_number_from_filename(filename):
@@ -187,17 +204,10 @@ def extract_number_from_filename(filename):
         return int(match.group())
     else:
         return -1
-    
-
-
-
-
-
 
 
 if __name__ == '__main__':
     main()
-    
 
 ############### ROUGH WORK #############
 

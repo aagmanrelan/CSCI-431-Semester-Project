@@ -12,7 +12,7 @@ def extract_number_from_filename(filename):
         return int(match.group())
     else:
         return -1
-    
+
 
 def downsample_pointCloud(pointCloud, v_size):
     new_cloud = pointCloud.voxel_down_sample(voxel_size=v_size)
@@ -29,9 +29,8 @@ def outlier_removal(pointCloud, neighbors, st_distance):
     new_cloud, _ = pointCloud.remove_statistical_outlier(nb_neighbors=neighbors, std_ratio=st_distance)
     return new_cloud
 
-    
-def background_subtract(point_cloud_lists):
 
+def background_subtract(point_cloud_lists):
     visualizer = o3d.visualization.Visualizer()
 
     visualizer.create_window('PointClouds')
@@ -49,7 +48,7 @@ def background_subtract(point_cloud_lists):
 
         dist = np.asarray(temp.compute_point_cloud_distance(prev_frame))
         background = np.where(dist < 0.05)[0]
-        
+
         if first:
             current_frame = temp.select_by_index(background, invert=True)
             visualizer.add_geometry(current_frame)
@@ -64,16 +63,12 @@ def background_subtract(point_cloud_lists):
 
     return
 
-
-
     print(len(point_cloud_lists))
 
     # count = 0
 
-
-
     # for point_cloud in point_cloud_lists:
-        # visualizer.clear_geometries()
+    # visualizer.clear_geometries()
     #     if count == 0:
     #         print('j')
     #         visualizer.add_geometry(point_cloud)
@@ -84,8 +79,8 @@ def background_subtract(point_cloud_lists):
     #         visualizer.poll_events()
     #         visualizer.update_renderer()
 
-
     # visualizer.destroy_window()
+
 
 def main():
     filelist = []
@@ -105,9 +100,6 @@ def main():
         pointcloud = downsample_pointCloud(pointcloud, 0.10)
         point_cloud_lists.append(pointcloud)
 
-
-
-
     background_subtract(point_cloud_lists)
 
 
@@ -117,10 +109,10 @@ def extract_number_from_filename(filename):
         return int(match.group())
     else:
         return -1
-    
+
+
 if __name__ == '__main__':
     main()
-    
 
 ############### ROUGH WORK #############
 
