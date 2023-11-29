@@ -82,23 +82,30 @@ def background_subtract(point_cloud_lists):
 
 
 def get_vehicle_clusters(point_cloud):
-    # eps =1.25
-    # min_points =6
+    # eps =1.25     0.9
+    # min_points =6   4
+    #   0.95     4
 
-    labels = np.array(point_cloud.cluster_dbscan(eps=0.9, min_points=4))
+    labels = np.array(point_cloud.cluster_dbscan(eps=1.00, min_points=4))
     cluster_points_dict = {label: [] for label in np.unique(labels)}
     for point, label in zip(np.asarray(point_cloud.points), labels):
         cluster_points_dict[label].append(point)
     return cluster_points_dict
 
 
-def calculate_centroid(point_cloud):
-    return np.mean(np.asarray(point_cloud), axis=0)
+def calculate_centroid(point_cloud_cluster):
+    return np.mean(np.asarray(point_cloud_cluster), axis=0)
 
+
+def calculate_axis_aligned_bounding_box(point_cloud_cluster):
+    cluster_points_vector = o3d.utility.Vector3dVector(point_cloud_cluster)
+    bounding_box = o3d.geometry.AxisAlignedBoundingBox.create_from_points(cluster_points_vector)
+    return bounding_box
 
 '''
 vehicle_id : {
     data : {
+        Bounding_box,
         prev_centroid: tuple, 
         mov_seq : list  
     }
@@ -129,14 +136,15 @@ def write_results_to_file(frame_number, vehicle_track):
             "bbox_y_max,bbox_z_min,bbox_z_max\n")
     for key in vehicle_track.keys():
         data = vehicle_track[key]
-        f.write(str(key)+",")
+        f.write(str(key) + ",")
         center_x = data['prev_centroid'][0]
         center_y = data['prev_centroid'][1]
         center_z = data['prev_centroid'][2]
-        mvx= data['motion_vectors'][0]
-        mvy=data['motion_vectors'][1]
+        mvx = data['motion_vectors'][0]
+        mvy = data['motion_vectors'][1]
         mvz = data['motion_vectors'][2]
-        f.write(str(center_x) + "," + str(center_y) + "," + str(center_z)+","+str(mvx)+","+str(mvy)+","+str(mvz))
+        f.write(str(center_x) + "," + str(center_y) + "," + str(center_z) + "," + str(mvx) + "," + str(mvy) + "," + str(
+            mvz))
         f.write("\n")
     f.close()
     pass
@@ -148,14 +156,30 @@ def process_point_clouds(point_cloud_sequence):
     for i, point_cloud in enumerate(point_cloud_sequence):
         # Assume get_vehicle_clusters returns a list of vehicle clusters
         vehicle_clusters = get_vehicle_clusters(point_cloud)
-
-        # if count == 100:
-        #     for key in vehicle_clusters.keys():
-        #         print(str(key), len(vehicle_clusters[key]))
+        print(i, str(vehicle_clusters.keys()))
+        # if i == 499:
+        #     pcd = point_cloud
+        #     with o3d.utility.VerbosityContextManager(
+        #             o3d.utility.VerbosityLevel.Debug) as cm:
+        #         labels = np.array(
+        #             pcd.cluster_dbscan(eps=1.40, min_points=8, print_progress=True))
+        #
+        #     max_label = labels.max()
+        #     print(f"point cloud has {max_label + 1} clusters")
+        #     colors = plt.get_cmap("tab20")(labels / (max_label if max_label > 0 else 1))
+        #     colors[labels < 0] = 0
+        #     pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+        #     o3d.visualization.draw_geometries([pcd],
+        #                                       zoom=0.455,
+        #                                       front=[-0.4999, -0.1659, -0.8499],
+        #                                       lookat=[2.1813, 2.0619, 2.0999],
+        #                                       up=[0.1204, -0.9852, 0.1215])
         #     break
 
         for cluster, vehicle in vehicle_clusters.items():
             if cluster != -1:
+                # print(calculate_axis_aligned_bounding_box(vehicle))
+                # break
                 vehicle_id = identify_vehicle(vehicle, vehicle_tracks)  # Implement this function
                 centroid = calculate_centroid(vehicle)
 
@@ -169,7 +193,7 @@ def process_point_clouds(point_cloud_sequence):
                 # update prev_centroid for reference
                 vehicle_tracks[vehicle_id]['prev_centroid'] = centroid
 
-                write_results_to_file(i, vehicle_tracks)
+        # write_results_to_file(i, vehicle_tracks)
         # Optionally, you can remove tracks that haven't been updated in a while
         # print(vehicle_tracks)
 
@@ -192,7 +216,7 @@ def main():
         pointcloud = downsample_pointCloud(pointcloud, 0.10)
         point_cloud_lists.append(pointcloud)
         # here we have all the differences of point clouds
-
+    
     point_cloud_list = background_subtract(point_cloud_lists)
 
     tracks = process_point_clouds(point_cloud_list)

@@ -1,3 +1,4 @@
+import math
 import os
 import re
 import time
@@ -14,217 +15,330 @@ def extract_number_from_filename(filename):
         return -1
 
 
-def visualize_pointCloud(pointClouds):
-    o3d.visualization.draw_geometries(pointClouds,
-                                      zoom=0.1,
-                                      front=[0, 0, 1],
-                                      lookat=[0, 0, 0],
-                                      up=[0, 1, 0]
-                                      )
-
-
 def downsample_pointCloud(pointCloud, v_size):
     new_cloud = pointCloud.voxel_down_sample(voxel_size=v_size)
     return new_cloud
 
 
-def outlier_removal(pointCloud, neighbors, st_distance):
-    """
-    neighbors, which specifies how many neighbors are taken into account in order to calculate the average distance
-    for a given point.
-    st_distance, which allows setting the threshold level based on the standard deviation of the average distances across
-    the point cloud. The lower this number the more aggressive the filter will be.
-    """
-    new_cloud, _ = pointCloud.remove_statistical_outlier(nb_neighbors=neighbors, std_ratio=st_distance)
-    return new_cloud
+def background_subtract(point_cloud_lists):
+    # visualizer = o3d.visualization.Visualizer()
 
+    # visualizer.create_window('PointClouds')
+    first = True
 
-def plane_segmentation(pointCloud, dist_threshold, n_points, interactions):
-    plane_model, inliers = pointCloud.segment_plane(distance_threshold=dist_threshold,
-                                                    ransac_n=n_points,
-                                                    num_iterations=interactions)
+    point_cloud_sequence = []
 
-    return plane_model, inliers
+    for idx in range(len(point_cloud_lists)):
 
+        # Initial Frame
+        prev_frame = point_cloud_lists[25]
 
-def get_box_volume(box):
-    a = box.extent
-    a = a * 2
-    print(np.prod(a))
+        # Mean Frame
+        # prev_frame = np.sum(point_cloud_lists[idx - 10: idx])/10
 
+        # Current point cloud in
+        temp = point_cloud_lists[idx]
 
-def main():
-    filelist = []
-    for file in os.listdir('dataset/PointClouds'):
-        f = os.path.join("dataset", "PointClouds", file)
-        filelist.append(f)
+        dist = np.asarray(temp.compute_point_cloud_distance(prev_frame))
 
-    filelist.sort(key=extract_number_from_filename)
+        background = np.where(dist < 0.05)[0]
 
-    objectpointcloudlist = []
-    pointcloudlist = []
-    for file in filelist:
-        pointcloud = o3d.io.read_point_cloud(file)
-        pointcloud = outlier_removal(pointcloud, 10, 1)
-        pointcloud = downsample_pointCloud(pointcloud, 0.15)
-        pointcloudlist.append(pointcloud)
-        plane_model, inliers = plane_segmentation(pointcloud, 0.009, 3, 25000)
-        objects = pointcloud.select_by_index(inliers, invert=True)
-        objectpointcloudlist.append(objects)
+        if first:
+            current_frame = temp.select_by_index(background, invert=True)
+            # visualizer.add_geometry(current_frame)
+            point_cloud_sequence.append(current_frame)
+            first = False
+        else:
 
-    cluster_info_list = []
+            # current_frame.points = temp.select_by_index(background, invert=True).points
+            current_frame = temp.select_by_index(background, invert=True)
+            point_cloud_sequence.append(current_frame)
+            # visualizer.update_geometry(current_frame)
+            # visualizer.poll_events()
+            # visualizer.update_renderer()
 
-    for obj in objectpointcloudlist:
-        labels = np.array(obj.cluster_dbscan(eps=1.20, min_points=6))
-        cluster_points_dict = {label: [] for label in np.unique(labels)}
-        for point, label in zip(np.asarray(obj.points), labels):
-            cluster_points_dict[label].append(point)
-        cluster_info_list.append(cluster_points_dict)
+    # This ideally should contain only the points belonging to all cars
 
-    working_dict = cluster_info_list[399]
+    # if idx ==499:
+    #     break
 
-    for key in working_dict:
-        points = working_dict[key]
-        if 500 > len(points) > 8:
-            vector_p = o3d.utility.Vector3dVector(points)
-            box = o3d.geometry.OrientedBoundingBox.create_from_points(vector_p)
-            get_box_volume(box)
-            point_cloud = o3d.geometry.PointCloud()
-            point_cloud.points = vector_p
-            visualize_pointCloud([point_cloud])
+    # pcd = point_cloud_sequence[499]
 
-
-
-
-###########################################################
-###########################################################
-###########################################################
-###########################################################
-###########################################################
-###########################################################
-
-    # get corners of these boxes
-    # Get volume
-    # Compare by Volume
-
-
-
-    # visualize_pointCloud([objectpointcloudlist[0]])
-
-    # pcd = objectpointcloudlist[399]
     # with o3d.utility.VerbosityContextManager(
-    #         o3d.utility.VerbosityLevel.Debug) as cm:
-    #     labels = np.array(
-    #         pcd.cluster_dbscan(eps=1.20, min_points=6, print_progress=True))
-    #
+    #                     o3d.utility.VerbosityLevel.Debug) as cm:
+    #                 labels = np.array(
+    #                     pcd.cluster_dbscan(eps=0.9, min_points=4, print_progress=True))
+
     # max_label = labels.max()
     # print(f"point cloud has {max_label + 1} clusters")
     # colors = plt.get_cmap("tab20")(labels / (max_label if max_label > 0 else 1))
     # colors[labels < 0] = 0
     # pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
     # o3d.visualization.draw_geometries([pcd],
-    #                                   zoom=0.455,
-    #                                   front=[-0.4999, -0.1659, -0.8499],
-    #                                   lookat=[2.1813, 2.0619, 2.0999],
-    #                                   up=[0.1204, -0.9852, 0.1215])
+    #                                             zoom=0.455,
+    #                                             front=[-0.4999, -0.1659, -0.8499],
+    #                                             lookat=[2.1813, 2.0619, 2.0999],
+    #                                             up=[0.1204, -0.9852, 0.1215])
+    return point_cloud_sequence
 
 
+def get_vehicle_clusters(point_cloud):
+    # eps =1.25     0.9
+    # min_points =6   4
+
+    labels = np.array(point_cloud.cluster_dbscan(eps=0.95, min_points=4))
+    cluster_points_dict = {label: [] for label in np.unique(labels)}
+    for point, label in zip(np.asarray(point_cloud.points), labels):
+        cluster_points_dict[label].append(point)
+    return cluster_points_dict
 
 
+def calculate_centroid(point_cloud_cluster):
+    return np.mean(np.asarray(point_cloud_cluster), axis=0)
 
 
+def calculate_axis_aligned_bounding_box(point_cloud_cluster):
+    cluster_points_vector = o3d.utility.Vector3dVector(point_cloud_cluster)
+    bounding_box = o3d.geometry.AxisAlignedBoundingBox.create_from_points(cluster_points_vector)
+    return bounding_box
 
 
+def calculate_box_center(bounding_box):
+    return bounding_box.get_center()
 
 
+'''
+vehicle_id : {
+    data : {
+        Bounding_box,
+        prev_centroid: tuple, 
+        mov_seq : list  
+    }
+}
+'''
 
 
+def map_cluster_to_vehicle(current_vehicle, vehicle_tracks, distance_threshold=7.0):
+    # current_centroid = calculate_centroid(current_vehicle)
+    current_centroid = calculate_box_center(calculate_axis_aligned_bounding_box(current_vehicle))
+    l2_distances_list = []
+    for vehicle_id, data in vehicle_tracks.items():
+        prev_centroid = data['prev_centroid']
+
+        x_diff = current_centroid[0] - prev_centroid[0]
+        y_diff = current_centroid[1] - prev_centroid[1]
+        z_diff = current_centroid[2] - prev_centroid[2]
+        l2_dist = math.sqrt(x_diff ** 2 + y_diff ** 2 + z_diff ** 2)
+        l2_distances_list.append((l2_dist, vehicle_id))
+
+        # distance = np.linalg.norm(np.array(prev_centroid) - np.array(current_centroid))
+        # if distance < distance_threshold:
+        #     return vehicle_id
+
+    l2_distances_list = sorted(l2_distances_list, key=lambda point: point[0])
+
+    if (len(l2_distances_list)) == 0:
+        return max(vehicle_tracks.keys(), default=0) + 1
+
+    if l2_distances_list[0][0] < distance_threshold:
+        # print(l2_distances_list)
+        return l2_distances_list[0][1]
+    else:
+        # If no match found, assign a new ID
+        return max(vehicle_tracks.keys(), default=0) + 1
 
 
+def calculate_motion_vector(prev_position, current_position):
+    return np.array(current_position) - np.array(prev_position)
 
 
+def write_results_to_file(frame_number, vehicle_track):
+    f = open(f"perception_results/frame_{frame_number}.csv", "w")
+    f.write("vehicle_id,position_x,position_y,position_z,mvec_x,mvec_y,mvec_z,bbox_x_min,bbox_x_max,bbox_y_min,"
+            "bbox_y_max,bbox_z_min,bbox_z_max\n")
+    for key in vehicle_track.keys():
+        data = vehicle_track[key]
+        f.write(str(key) + ",")
+        center_x = data['prev_centroid'][0]
+        center_y = data['prev_centroid'][1]
+        center_z = data['prev_centroid'][2]
+        mvx = data['motion_vectors'][0]
+        mvy = data['motion_vectors'][1]
+        mvz = data['motion_vectors'][2]
+        bounding_box = data['Bounding_Box']
+        BBox_X_Min = bounding_box.get_min_bound()[0]
+        BBox_Y_Min = bounding_box.get_min_bound()[1]
+        BBox_Z_Min = bounding_box.get_min_bound()[2]
+
+        BBox_X_Max = bounding_box.get_max_bound()[0]
+        BBox_Y_Max = bounding_box.get_max_bound()[1]
+        BBox_Z_Max = bounding_box.get_max_bound()[2]
+
+        f.write(str(center_x) + "," + str(center_y) + "," + str(center_z) + "," + str(BBox_X_Min) + "," +
+                str(BBox_X_Max) + "," + str(
+            BBox_Y_Min) + "," + str(BBox_Y_Max) + "," + str(BBox_Z_Min) + "," + str(BBox_Z_Max) + "," + str(
+            mvx) + "," + str(mvy) + "," +
+                str(mvz))
+        f.write("\n")
+    f.close()
 
 
+def process_point_clouds(point_cloud_sequence):
+    vehicle_tracks = {}  # Dictionary to keep track of vehicles across frames
+
+    for i, point_cloud in enumerate(point_cloud_sequence):
+        # Assume get_vehicle_clusters returns a list of vehicle clusters
+        vehicle_clusters = get_vehicle_clusters(point_cloud)
+        # print(i, str(vehicle_clusters.keys()))
+        if i == 350:
+            pcd = point_cloud
+            with o3d.utility.VerbosityContextManager(
+                    o3d.utility.VerbosityLevel.Debug) as cm:
+                labels = np.array(
+                    pcd.cluster_dbscan(eps=0.95, min_points=4, print_progress=True))
+
+            max_label = labels.max()
+            print(f"point cloud has {max_label + 1} clusters")
+            colors = plt.get_cmap("tab20")(labels / (max_label if max_label > 0 else 1))
+            colors[labels < 0] = 0
+            pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+            o3d.visualization.draw_geometries([pcd],
+                                              zoom=0.455,
+                                              front=[-0.4999, -0.1659, -0.8499],
+                                              lookat=[2.1813, 2.0619, 2.0999],
+                                              up=[0.1204, -0.9852, 0.1215])
+            # print(vehicle_tracks)
+            break
+
+        for cluster, vehicle in vehicle_clusters.items():
+            if cluster != -1:
+                # print(calculate_axis_aligned_bounding_box(vehicle))
+                # break
+                vehicle_id = map_cluster_to_vehicle(vehicle, vehicle_tracks)  # Implement this function
+                bounding_box = calculate_axis_aligned_bounding_box(vehicle)
+                centroid = calculate_box_center(bounding_box)
+
+                if vehicle_id in vehicle_tracks.keys():
+                    prev_centroid = vehicle_tracks[vehicle_id]['prev_centroid']
+                    motion_vector = calculate_motion_vector(prev_centroid, centroid)
+                    vehicle_tracks[vehicle_id]['motion_vectors'] = motion_vector
+                    vehicle_tracks[vehicle_id]['Bounding_Box'] = bounding_box
+                else:
+                    vehicle_tracks[vehicle_id] = {'Bounding_Box': bounding_box, 'prev_centroid': centroid,
+                                                  'motion_vectors': np.zeros(3)}
+
+                # update prev_centroid for reference
+                vehicle_tracks[vehicle_id]['prev_centroid'] = centroid
+
+        write_results_to_file(i, vehicle_tracks)
+        # Optionally, you can remove tracks that haven't been updated in a while
+        # print(vehicle_tracks)
+
+    return vehicle_tracks
 
 
+def main():
+    filelist = []
+    point_cloud_lists = []
+
+    for file in os.listdir('dataset/PointClouds'):
+        f = os.path.join("dataset", "PointClouds", file)
+        filelist.append(f)
+
+    filelist.sort(key=extract_number_from_filename)
+
+    for file in filelist:
+        pointcloud = o3d.io.read_point_cloud(file)
+
+        pointcloud = downsample_pointCloud(pointcloud, 0.10)
+        point_cloud_lists.append(pointcloud)
+        # here we have all the differences of point clouds
+
+    point_cloud_list = background_subtract(point_cloud_lists)
+
+    tracks = process_point_clouds(point_cloud_list)
 
 
-    # for key in cluster_info_list[350].keys():
-    #     print(len(cluster_info_list[350][key]))
-    #
-    #
-    # cluster_points = cluster_info_list[350][2]
-    # vector_p = o3d.utility.Vector3dVector(cluster_points)
-    # box = o3d.geometry.OrientedBoundingBox.create_from_points(vector_p)
-    # print(np.asarray(box.get_box_points()))
-    #
-    # pc = o3d.geometry.PointCloud()
-    # print(vector_p)
-    # pc.points = o3d.utility.Vector3dVector(box.get_box_points())
-    # pc1 = o3d.geometry.PointCloud()
-    # pc1.points = vector_p
-    # visualize_pointCloud([pc, pc1])
-
-    # object = cluster_info_list[350]['object']
-    # labels = cluster_info_list[350]['labels']
-    #
-    # unique_labels, counts = np.unique(labels, return_counts=True)
-    # max_label = unique_labels.max()
-
-    # print(unique_labels)
-    # print(counts)
-
-    # points_array = np.asarray(object.points)
-
-    # for label, count in zip(unique_labels, counts):
-    #     if label >= 0:
-    #         print(f"Cluster {label} in object has {count} points")
-
-    # max_label = labels.max()
-    # # print(f"point cloud has {max_label + 1} clusters")
-    # colors = plt.get_cmap("tab20")(labels / (max_label if max_label > 0 else 1))
-    # colors[labels < 0] = 0
-    # object.colors = o3d.utility.Vector3dVector(colors[:, :3])
-
-    # voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pointcloudlist[0],
-    #                                                             voxel_size=1)
-    # # o3d.visualization.draw_geometries([voxel_grid])
-    #
-    # voxels = np.asarray(voxel_grid.get_voxels())
-    #
-    # for v in voxels:
-    #     print(v)
-
-    # vis = o3d.visualization.Visualizer()
-    # vis.create_window()
-    #
-    # for point_cloud in objectpointcloudlist:
-    #     vis.clear_geometries()
-    #     vis.add_geometry(point_cloud)
-    #     # vis.update_renderer()
-    #     vis.poll_events()
-    #
-    # vis.destroy_window()
+def extract_number_from_filename(filename):
+    match = re.search(r'\d+', filename)
+    if match:
+        return int(match.group())
+    else:
+        return -1
 
 
-# pointcloud = o3d.io.read_point_cloud("dataset/PointClouds/400.pcd")
-# pointcloud = outlier_removal(pointcloud, 10, 1.0)
-# pointcloud = downsample_pointCloud(pointcloud, 0.15)
-#
-# plane_model, inliers = plane_segmentation(pointcloud, 0.009, 3, 25000)
-#
-# objects = pointcloud.select_by_index(inliers, invert=True)
-#
-# # o3d.visualization.draw_geometries([objects])
-#
-#
-
-#
-
-#
-
-#
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
+
+############### ROUGH WORK #############
+
+'''
+
+
+
+
+# def process_point_clouds(point_cloud_sequence):
+#     vehicle_tracks = {}  # Dictionary to keep track of vehicles across frames
+
+#     for i, point_cloud in enumerate(point_cloud_sequence):
+#         # Assume get_vehicle_clusters returns a list of vehicle clusters
+#         vehicle_clusters = get_vehicle_clusters(point_cloud)
+
+#         for vehicle in vehicle_clusters:
+#             vehicle_id = map_cluster_to_vehicle(vehicle, vehicle_tracks)  # Implement this function
+#             centroid = calculate_centroid(vehicle)
+
+#             if vehicle_id in vehicle_tracks:
+#                 prev_centroid = vehicle_tracks[vehicle_id]['prev_centroid']
+#                 motion_vector = calculate_motion_vector(prev_centroid, centroid)
+#                 vehicle_tracks[vehicle_id]['motion_vectors'].append(motion_vector)
+#             else:
+#                 vehicle_tracks[vehicle_id] = {'prev_centroid': centroid, 'motion_vectors': []}
+
+#             # update prev_centroid for reference 
+#             vehicle_tracks[vehicle_id]['prev_centroid'] = centroid
+
+#         # Optionally, you can remove tracks that haven't been updated in a while
+
+#     return vehicle_tracks
+
+
+            # pcd = new_point_cloud
+            # with o3d.utility.VerbosityContextManager(
+            #         o3d.utility.VerbosityLevel.Debug) as cm:
+            #     labels = np.array(
+            #         pcd.cluster_dbscan(eps=1.25, min_points=6, print_progress=True))
+
+            # max_label = labels.max()
+            # print(f"point cloud has {max_label + 1} clusters")
+            # colors = plt.get_cmap("tab20")(labels / (max_label if max_label > 0 else 1))
+            # colors[labels < 0] = 0
+            # pcd.colors = o3d.utility.Vector3dVector(colors[:, :3])
+            # o3d.visualization.draw_geometries([pcd],
+            #                                   zoom=0.455,
+            #                                   front=[-0.4999, -0.1659, -0.8499],
+            #                                   lookat=[2.1813, 2.0619, 2.0999],
+            #                                   up=[0.1204, -0.9852, 0.1215])
+            # break
+
+
+
+#   def make_clusters(pointcloud):
+#     labels = np.array(pointcloud.cluster_dbscan(eps=1.25, min_points=6))
+#     cluster_points_dict = {label: [] for label in np.unique(labels)}
+#     for point, label in zip(np.asarray(pointcloud.points), labels):
+#         cluster_points_dict[label].append(point)
+#     return cluster_points_dict
+
+
+# def get_viable_cars(cluster_dict):
+#     bounding_box_list = []
+#     for key in cluster_dict.keys():
+#         if key != -1:
+#             cluster_points_vector = o3d.utility.Vector3dVector(cluster_dict[key])
+#             bounding_box = o3d.geometry.OrientedBoundingBox.create_from_points(cluster_points_vector)
+#             bounding_box_list.append(bounding_box)
+
+#     print(bounding_box_list)
+
+'''
