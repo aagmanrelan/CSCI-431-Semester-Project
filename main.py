@@ -162,7 +162,7 @@ def write_results_to_file(frame_number, vehicle_track):
         #         str(mvz))
         f.write(str(center_x) + "," + str(center_y) + "," + str(center_z) + "," + str(mvx) + "," +
                 str(mvy) + "," + str(
-            mvy) + "," + str(BBox_X_Min) + "," + str(BBox_X_Max) + "," + str(BBox_Y_Min) + "," + str(
+            mvz) + "," + str(BBox_X_Min) + "," + str(BBox_X_Max) + "," + str(BBox_Y_Min) + "," + str(
             BBox_Y_Max) + "," + str(BBox_Z_Min) + "," +
                 str(BBox_Z_Max))
         f.write("\n")
