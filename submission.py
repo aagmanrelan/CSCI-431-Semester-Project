@@ -66,8 +66,8 @@ def background_subtract(point_cloud_lists):
     return point_cloud_sequence
 
 
-def get_vehicle_clusters(point_cloud):#2.18
-    labels = np.array(point_cloud.cluster_dbscan(eps=1.85, min_points=3))
+def get_vehicle_clusters(point_cloud):  # 1.85, 3
+    labels = np.array(point_cloud.cluster_dbscan(eps=1.81, min_points=2))
     cluster_points_dict = {label: [] for label in np.unique(labels)}
     for point, label in zip(np.asarray(point_cloud.points), labels):
         cluster_points_dict[label].append(point)
@@ -149,7 +149,7 @@ def process_point_clouds(point_cloud_sequence):
         geometries = []
         boxes = []
         for cluster, vehicle in vehicle_clusters.items():
-            if cluster != -1 and cluster<6:
+            if cluster != -1 and cluster < 6:
                 # vehicle_id = map_cluster_to_vehicle(vehicle, vehicle_tracks)  # Implement this function
                 if cluster not in cluster_colors:
                     cluster_colors[cluster] = np.random.rand(3)
