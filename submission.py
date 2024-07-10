@@ -1,7 +1,5 @@
-import math
 import os
 import re
-import time
 import numpy as np
 import open3d as o3d
 
@@ -56,18 +54,14 @@ def background_subtract(point_cloud_lists):
             first = False
         else:
 
-            # current_frame.points = temp.select_by_index(background, invert=True).points
             current_frame = temp.select_by_index(background, invert=True)
             point_cloud_sequence.append(current_frame)
-            # visualizer.update_geometry(current_frame)
-            # visualizer.poll_events()
-            # visualizer.update_renderer()
 
     return point_cloud_sequence
 
 
-def get_vehicle_clusters(point_cloud):  # 1.85, 3
-    labels = np.array(point_cloud.cluster_dbscan(eps=1.81, min_points=2))
+def get_vehicle_clusters(point_cloud):
+    labels = np.array(point_cloud.cluster_dbscan(eps=1.85, min_points=3))
     cluster_points_dict = {label: [] for label in np.unique(labels)}
     for point, label in zip(np.asarray(point_cloud.points), labels):
         cluster_points_dict[label].append(point)
@@ -86,17 +80,6 @@ def calculate_axis_aligned_bounding_box(point_cloud_cluster):
 
 def calculate_box_center(bounding_box):
     return bounding_box.get_center()
-
-
-'''
-vehicle_id : {
-    data : {
-        Bounding_box,
-        prev_centroid: tuple, 
-        mov_seq : list  
-    }
-}
-'''
 
 
 def calculate_motion_vector(prev_position, current_position):
@@ -214,23 +197,6 @@ def main():
 
     point_cloud_list = background_subtract(point_cloud_lists)
     process_point_clouds(point_cloud_list)
-
-
-def visualize_pointCloud(pointClouds):
-    o3d.visualization.draw_geometries(pointClouds,
-                                      zoom=0.1,
-                                      front=[0, 0, 1],
-                                      lookat=[0, 0, 0],
-                                      up=[0, 1, 0]
-                                      )
-
-
-def extract_number_from_filename(filename):
-    match = re.search(r'\d+', filename)
-    if match:
-        return int(match.group())
-    else:
-        return -1
 
 
 if __name__ == '__main__':
