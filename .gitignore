@@ -1,5 +1,6 @@
-dataset
+dataset/Images
 *.iml
 *.xml
 .idea
-perception_results
+perception_results/
+venv
